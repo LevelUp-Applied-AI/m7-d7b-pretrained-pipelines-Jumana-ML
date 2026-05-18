@@ -7,7 +7,9 @@ Implement the functions below. See the drill guide for full task descriptions.
 import os
 import re
 import string
-
+from collections import Counter
+from transformers import pipeline
+from rouge_score.rouge_scorer import RougeScorer
 
 # -- Helpers (provided — do NOT modify) --------------------------------------
 
@@ -30,8 +32,7 @@ def build_qa_pipeline(model_name: str):
     Returns the pipeline object (callable).
     """
     # TODO: build a question-answering pipeline using the given model name (see reading § 3)
-    raise NotImplementedError("build_qa_pipeline not implemented")
-
+    return pipeline("question-answering", model=model_name)
 
 def answer_one(qa, question: str, context: str) -> dict:
     """
@@ -40,8 +41,7 @@ def answer_one(qa, question: str, context: str) -> dict:
     Returns the pipeline output dict with keys "answer", "score", "start", "end".
     """
     # TODO: call qa(question=..., context=...) and return the result
-    raise NotImplementedError("answer_one not implemented")
-
+    return qa(question=question, context=context)
 
 # -- Task 2: Normalization + EM ----------------------------------------------
 
@@ -55,16 +55,23 @@ def normalize_answer(s: str) -> str:
       - strip all string.punctuation
       - collapse whitespace
     """
-    # TODO: apply the four normalization steps in order; word-boundary regex is required for the article strip
-    raise NotImplementedError("normalize_answer not implemented")
+    #apply the four normalization steps in order; word-boundary regex is required for the article strip
+    s = s.lower()
+    # Strip standalone articles using word-boundary regex
+    s = re.sub(r"\b(a|an|the)\b", " ", s)
+    # Strip all punctuation
+    s = s.translate(str.maketrans("", "", string.punctuation))
+    # Collapse whitespace
+    s = " ".join(s.split())
+    return s
 
 
 def exact_match(pred: str, gold: str) -> int:
     """
     Return 1 if normalized prediction equals normalized gold, else 0.
     """
-    # TODO: normalize both, compare, return int
-    raise NotImplementedError("exact_match not implemented")
+    #normalize both, compare, return int
+    return 1 if normalize_answer(pred) == normalize_answer(gold) else 0
 
 
 # -- Task 3: Token-F1 --------------------------------------------------------
@@ -78,10 +85,29 @@ def token_f1(pred: str, gold: str) -> float:
       - one empty -> 0.0
     Returns a float in [0.0, 1.0]. Never returns NaN.
     """
-    # TODO: normalize both, split on whitespace
-    # TODO: handle empty cases
-    # TODO: compute multiset overlap, precision, recall, harmonic mean
-    raise NotImplementedError("token_f1 not implemented")
+    #normalize both, split on whitespace
+    #handle empty cases
+    #compute multiset overlap, precision, recall, harmonic mean
+    pred_tokens = normalize_answer(pred).split()
+    gold_tokens = normalize_answer(gold).split()
+
+    if not pred_tokens and not gold_tokens:
+        return 1.0
+    if not pred_tokens or not gold_tokens:
+        return 0.0
+
+    # Compute multiset overlap
+    common = Counter(pred_tokens) & Counter(gold_tokens)
+    num_same = sum(common.values())
+
+    precision = num_same / len(pred_tokens)
+    recall = num_same / len(gold_tokens)
+
+    if precision + recall == 0:
+        return 0.0
+
+    f1 = (2 * precision * recall) / (precision + recall)
+    return f1
 
 
 # -- Task 4: Summarization pipeline ------------------------------------------
@@ -92,8 +118,8 @@ def build_summarizer(model_name: str):
 
     Returns the pipeline object (callable).
     """
-    # TODO: build a summarization pipeline using the given model name (see reading § 6)
-    raise NotImplementedError("build_summarizer not implemented")
+    #build a summarization pipeline using the given model name (see reading § 6)
+    return pipeline("summarization", model=model_name)
 
 
 def summarize_one(summ, text: str, max_length: int, min_length: int) -> str:
@@ -103,10 +129,16 @@ def summarize_one(summ, text: str, max_length: int, min_length: int) -> str:
     Use do_sample=False, num_beams=4. Return the summary_text string from the
     first output element (the pipeline returns a list-of-dicts).
     """
-    # TODO: invoke the pipeline with deterministic generation parameters and return the summary string
+    #invoke the pipeline with deterministic generation parameters and return the summary string
     #       (the pipeline returns a list-of-dicts — see reading § 6 for the output shape)
-    raise NotImplementedError("summarize_one not implemented")
-
+    result = summ(
+        text, 
+        max_length=max_length, 
+        min_length=min_length, 
+        do_sample=False, 
+        num_beams=4
+    )
+    return result[0]["summary_text"]
 
 # -- Task 5: ROUGE -----------------------------------------------------------
 
@@ -119,10 +151,15 @@ def compute_rouge(pred: str, ref: str) -> dict:
 
     Returns {"rouge1": float, "rouge2": float, "rougeL": float}, all F1.
     """
-    # TODO: build a stemming-enabled ROUGE scorer over the three metric variants
-    # TODO: score the (reference, predicted) pair (mind the argument order) and return F1 measures only
-    raise NotImplementedError("compute_rouge not implemented")
-
+    #build a stemming-enabled ROUGE scorer over the three metric variants
+    #score the (reference, predicted) pair (mind the argument order) and return F1 measures only
+    scorer = RougeScorer(["rouge1", "rouge2", "rougeL"], use_stemmer=True)
+    scores = scorer.score(ref, pred)
+    return {
+        "rouge1": scores["rouge1"].fmeasure,
+        "rouge2": scores["rouge2"].fmeasure,
+        "rougeL": scores["rougeL"].fmeasure,
+    }
 
 if __name__ == "__main__":
     # Minimal smoke when run directly: tasks 2/3/5 don't need network.
